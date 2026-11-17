@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Home Screen Organizer</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root { --bg:#1e1e1e; --card:#262626; --folder:#2f2f2f; --preview:#3d3d3d;
+          --fg:#f0f0f0; --muted:#777; --hl:#3a6fb8; --accent:#4fc3f7; --gold:#f0c060; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); overflow:hidden;
+         font-family:-apple-system, Helvetica, Arial, sans-serif; }
+  button { background:#3a3a3a; color:var(--fg); border:0; border-radius:8px;
+           padding:8px 14px; cursor:pointer; font-size:13px; }
+  button:hover:not(:disabled) { filter:brightness(1.15); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:#2d5a9e; }
+  button.danger { background:#b03030; }
+  input, select { background:#2b2b2b; color:var(--fg); border:1px solid #333;
+                  border-radius:8px; padding:7px 9px; font-size:13px; }
+  .top { display:flex; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid #333; }
+  .status { color:#aaa; font-size:12px; margin-left:8px; }
+  .main { display:flex; height:calc(100vh - 56px); }
+  .left { width:340px; border-right:1px solid #333; display:flex; flex-direction:column; }
+  .left-head { display:flex; gap:6px; padding:10px; }
+  .left-head input { flex:1; min-width:0; }
+  .scroll { overflow:auto; flex:1; padding:0 10px 20px; }
+  .right { flex:1; overflow:auto; padding:12px; }
+  .cat { color:var(--accent); font-weight:600; font-size:12px; margin:14px 0 4px; }
+  .row { display:flex; align-items:center; gap:12px; padding:5px 6px; border-radius:10px;
+         cursor:grab; user-select:none; touch-action:none; font-size:14px; }
+  .row:hover { background:#2a2a2a; }
+  .icon { border-radius:22%; display:block; background:#333; user-select:none; }
+  .fallback { display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+  .card { background:var(--card); border-radius:16px; padding:10px; border:2px solid transparent;
+          transition:border-color .12s; }
+  .card.over { border-color:var(--hl); }
+  .card-title { color:var(--accent); font-weight:700; font-size:13px; margin-bottom:6px; }
+  .dock-row { display:flex; gap:8px; align-items:center; min-height:76px; flex-wrap:wrap; }
+  .pages { display:grid; grid-template-columns:repeat(2, max-content); gap:16px; align-items:start;
+           margin-top:12px; }
+  .grid { display:grid; grid-template-columns:repeat(4, 116px); gap:8px; }
+  .tile { width:116px; height:124px; background:var(--card); border-radius:14px;
+          display:flex; flex-direction:column; align-items:center; justify-content:center;
+          border:2px solid transparent; cursor:grab; user-select:none; touch-action:none;
+          transition:border-color .12s, transform .12s; }
+  .tile.over { border-color:var(--hl); transform:scale(1.05); }
+  .tile.compact { width:auto; height:auto; padding:6px; }
+  .tile .name { font-size:11px; margin-top:4px; max-width:108px; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; }
+  .tile.folder { background:var(--folder); cursor:pointer; }
+  .folder-preview { background:var(--preview); border-radius:14px; padding:6px;
+                    display:grid; grid-template-columns:repeat(3, 24px); gap:3px; }
+  .folder-name { color:var(--gold); font-weight:700; font-size:11px; margin-top:6px;
+                 max-width:108px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tile.widget { color:var(--muted); font-size:12px; }
+  .newpage { min-width:480px; min-height:220px; display:flex; align-items:center;
+             justify-content:center; color:var(--muted); font-weight:700; cursor:pointer; }
+  .empty { color:var(--muted); font-size:12px; padding:12px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex;
+              align-items:center; justify-content:center; z-index:50; }
+  .modal { background:#1e1e1e; border:2px solid #333; border-radius:18px; padding:18px 22px;
+           min-width:520px; }
+  .modal.over { border-color:var(--hl); }
+  .modal-title-input { width:100%; background:transparent; border:1px dashed #444; border-radius:8px;
+                       color:var(--gold); font-size:18px; font-weight:700; text-align:center;
+                       padding:4px 8px; outline:none; margin-bottom:12px; }
+  .modal-title-input:focus { border-color:var(--hl); background:#2b2b2b; }
+  .modal-title { color:var(--gold); font-size:18px; font-weight:700; margin-bottom:12px; text-align:center; }
+  .modal-grid { display:grid; grid-template-columns:repeat(4, 116px); gap:8px; background:var(--folder);
+                border-radius:18px; padding:14px; min-height:180px; justify-content:center; }
+  .modal-grid .tile { width:116px; height:auto; padding:8px 0; }
+  .row-end { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  .ghost { position:fixed; left:0; top:0; pointer-events:none; z-index:999; opacity:0;
+           transition:transform .16s cubic-bezier(.2,.8,.2,1), opacity .18s ease; }
+  .ghost.show { opacity:.95; }
+  .ghost.drop { opacity:0; transition:transform .18s ease, opacity .18s ease; }
+  .ghost.back { opacity:0; }
+  .ghost-inner { transition:transform .16s cubic-bezier(.2,.8,.2,1); filter:drop-shadow(0 12px 24px rgba(0,0,0,.55)); }
+  .ghost-inner.lift { transform:scale(1.12); }
+  .ghost-inner.shrink { transform:scale(.55); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+const COLS = 4, DOCK_MAX = 4, MIN_ROWS = 6, DRAG_PX = 8, GHOST = 92;
+const ICON_LIST = 52, ICON_TILE = 68, ICON_MINI = 24, ICON_OVERLAY = 76;
+const APPLE = "Apple", OTHER = "Other";
+
+const CATS = [
+  ["Social", ["facebook","instagram","twitter","tiktok","snapchat","reddit","threads","linkedin","pinterest","mastodon","bereal"]],
+  ["Communication", ["messages","mobilemail","gmail","outlook","whatsapp","messenger","telegram","discord","slack","zoom","microsoftteams","signal","skype","facetime","mobilephone","wechat"]],
+  ["Media & Entertainment", ["netflix","youtube","disney","hulu","twitch","plex","podcast","kindle","audible","appletv","primevideo"]],
+  ["Music", ["spotify","music","soundcloud","pandora","shazam","deezer"]],
+  ["Photo & Video", ["photo","camera","lightroom","capcut","imovie","vsco","video"]],
+  ["Shopping & Food", ["amazon","ebay","etsy","shop","ubereats","doordash","deliveroo","menulog","starbucks","mcdonald"]],
+  ["Travel & Maps", ["maps","uber","airbnb","booking","expedia","tripadvisor","trainline","waze","citymapper","transit","airline","qantas","jetstar","virginaustralia","tripit"]],
+  ["Finance", ["bank","paypal","wallet","venmo","coinbase","stocks","robinhood","revolut","monzo","westpac","commbank","xero"]],
+  ["Health & Fitness", ["health","fitness","strava","myfitnesspal","calm","headspace","peloton","garmin","workout","sleep"]],
+  ["Productivity", ["notes","reminders","calendar","pages","numbers","keynote","microsoft word","excel","powerpoint","notion","todoist","trello","asana","dropbox","drive","onedrive","files","evernote","documents","sheets","google docs"]],
+  ["Games", ["game","roblox","minecraft","clash","pokemon","supercell","playrix","genshin","fortnite"]],
+  ["Browsing", ["safari","chrome","firefox","brave","opera","duckduckgo","microsoftedge","microsoft edge"]],
+  ["Utilities", ["calculator","clock","weather","compass","settings","authenticator","1password","vpn","flashlight","translate","measure","magnifier","shortcuts","home"]],
+];
+const CAT_ORDER = [...CATS.map(c => c[0]), APPLE, OTHER];
+
+function categorise(bid, name) {
+  const text = `${bid} ${name}`.toLowerCase();
+  for (const [cat, kws] of CATS) if (kws.some(k => text.includes(k))) return cat;
+  return bid.toLowerCase().startsWith("com.apple.") ? APPLE : OTHER;
+}
+
+const PALETTE = ["#4a7bd0","#c0605a","#5aa87a","#b08a3e","#8a5ac0","#3e9aa8","#c05a95"];
+const colorFor = bid => PALETTE[[...bid].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
+const newId = () => "f" + Math.random().toString(36).slice(2, 10);
+
+const isApp = it => !!it && typeof it === "object" && !!it.bundleIdentifier
+                    && it.elementType !== "widget" && it.listType !== "folder";
+const isFolder = it => !!it && it.listType === "folder";
+const folderApps = f => (f.iconLists || []).flat().filter(a => a && a.bundleIdentifier);
+
+function ensureIds(layout) {
+  return layout.map(p => Array.isArray(p)
+    ? p.map(it => (isFolder(it) && !it.id ? { ...it, id: newId() } : it))
+    : p);
+}
+
+function stripApp(list, bid) {
+  return list
+    .filter(it => !(isApp(it) && it.bundleIdentifier === bid))
+    .map(it => (isFolder(it)
+      ? { ...it, iconLists: (it.iconLists || [[]]).map(p => stripApp(p, bid)) }
+      : it));
+}
+
+const pruneFolders = list => list.filter(it => !(isFolder(it) && folderApps(it).length === 0));
+
+function addToFolder(folder, app) {
+  const inner = (folder.iconLists || [[]]).map(p => [...p]);
+  if (inner.length === 0) inner.push([]);
+  inner[0].push(app);
+  return { ...folder, iconLists: inner };
+}
+
+function moveApp(layout, bid, target, names) {
+  const app = { bundleIdentifier: bid, displayName: names[bid] || bid };
+  let L = layout.map(p => (Array.isArray(p) ? stripApp(p, bid) : p));
+
+  if (target.type === "dock") {
+    L[0] = [...(L[0] || []), app];
+  } else if (target.type === "page") {
+    while (L.length <= target.idx) L.push([]);
+    L[target.idx] = [...L[target.idx], app];
+  } else if (target.type === "folder") {
+    L = L.map(p => (Array.isArray(p)
+      ? p.map(it => (isFolder(it) && it.id === target.id ? addToFolder(it, app) : it))
+      : p));
+  } else if (target.type === "app") {
+    L[target.idx] = L[target.idx].map(it => (isApp(it) && it.bundleIdentifier === target.bid
+      ? { listType: "folder", id: newId(), displayName: "New Folder", iconLists: [[it, app]] }
+      : it));
+  }
+
+  return L.map(p => (Array.isArray(p) ? pruneFolders(p) : p));
+}
+
+function canDrop(layout, target, bid) {
+  if (!layout) return false;
+  if (target.type === "app") return target.bid !== bid;
+  if (target.type === "dock") {
+    const others = (layout[0] || []).filter(a => isApp(a) && a.bundleIdentifier !== bid);
+    return others.length < DOCK_MAX;
+  }
+  return true;
+}
+
+/* ---------- Components ---------- */
+
+function AppIcon({ bid, name, size, iconVersion }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [iconVersion]);
+  if (failed) {
+    return (
+      <div className="icon fallback"
+           style={{ width: size, height: size, background: colorFor(bid), fontSize: size * 0.42 }}>
+        {(name || "?")[0].toUpperCase()}
+      </div>
+    );
+  }
+  return (
+    <img className="icon" width={size} height={size} draggable={false} alt=""
+         src={`/api/icon/${encodeURIComponent(bid)}?v=${iconVersion}`}
+         onError={() => setFailed(true)} />
+  );
+}
+
+function AppTile({ bid, name, size = ICON_TILE, label = true, compact = false,
+                   drop, fromFolder = false, iconVersion, onPress }) {
+  return (
+    <div className={`tile${compact ? " compact" : ""}`}
+         data-drop={drop ? JSON.stringify(drop) : undefined}
+         onPointerDown={e => onPress(e, { bid, name, fromFolder })}>
+      <AppIcon bid={bid} name={name} size={size} iconVersion={iconVersion} />
+      {label && <div className="name">{name}</div>}
+    </div>
+  );
+}
+
+function FolderTile({ folder, iconVersion, onPress, onOpen }) {
+  const apps = folderApps(folder);
+  return (
+    <div className="tile folder"
+         data-drop={JSON.stringify({ type: "folder", id: folder.id })}
+         onPointerDown={e => onPress(e, { onClick: () => onOpen(folder.id) })}>
+      <div className="folder-preview">
+        {apps.slice(0, 9).map(a => (
+          <AppIcon key={a.bundleIdentifier} bid={a.bundleIdentifier}
+                   name={a.displayName} size={ICON_MINI} iconVersion={iconVersion} />
+        ))}
+        {apps.length === 0 && <span className="empty" style={{ padding: 0 }}>Empty</span>}
+      </div>
+      <div className="folder-name">{folder.displayName}</div>
+    </div>
+  );
+}
+
+function Dock({ layout, iconVersion, onPress }) {
+  const apps = (layout[0] || []).filter(isApp);
+  return (
+    <div className="card" data-drop={JSON.stringify({ type: "dock" })}>
+      <div className="card-title">Dock (max {DOCK_MAX})</div>
+      <div className="dock-row">
+        {apps.map(a => (
+          <AppTile key={a.bundleIdentifier} bid={a.bundleIdentifier} name={a.displayName}
+                   size={ICON_TILE} label={false} compact iconVersion={iconVersion} onPress={onPress} />
+        ))}
+        {apps.length === 0 && <div className="empty">Drop up to 4 apps here</div>}
+      </div>
+    </div>
+  );
+}
+
+function PageCard({ idx, page, iconVersion, onPress, onOpenFolder }) {
+  const items = page.filter(it => it && typeof it === "object");
+  const rows = Math.max(MIN_ROWS, Math.ceil(items.length / COLS));
+  return (
+    <div className="card" data-drop={JSON.stringify({ type: "page", idx })}>
+      <div className="card-title">Page {idx}</div>
+      <div className="grid" style={{ gridTemplateRows: `repeat(${rows}, 124px)` }}>
+        {items.length === 0 && <div className="empty" style={{ gridColumn: "1 / -1" }}>Drop apps here</div>}
+        {items.map((it, i) => {
+          if (isFolder(it)) {
+            return <FolderTile key={it.id} folder={it} iconVersion={iconVersion}
+                               onPress={onPress} onOpen={onOpenFolder} />;
+          }
+          if (it.elementType === "widget") {
+            return <div key={"w" + i} className="tile widget">Widget</div>;
+          }
+          if (isApp(it)) {
+            return <AppTile key={it.bundleIdentifier} bid={it.bundleIdentifier}
+                            name={it.displayName}
+                            drop={{ type: "app", idx, bid: it.bundleIdentifier }}
+                            iconVersion={iconVersion} onPress={onPress} />;
+          }
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FolderModal({ folder, iconVersion, onPress, onClose, onRename }) {
+  const apps = folderApps(folder);
+  const [draft, setDraft] = useState(folder.displayName);
+  const cancelRef = useRef(false);
+
+  useEffect(() => setDraft(folder.displayName), [folder.displayName]);
+
+  function commitName() {
+    if (cancelRef.current) {
+      cancelRef.current = false;
+      setDraft(folder.displayName);
+      return;
+    }
+    const name = draft.trim();
+    if (name && name !== folder.displayName) onRename(folder.id, name);
+    else setDraft(folder.displayName);
+  }
+
+  return (
+    <div className="modal-bg" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" data-drop={JSON.stringify({ type: "folder", id: folder.id })}>
+        <input className="modal-title-input"
+               value={draft}
+               maxLength={40}
+               title="Click to rename"
+               onChange={e => setDraft(e.target.value)}
+               onBlur={commitName}
+               onKeyDown={e => {
+                 if (e.key === "Enter") e.currentTarget.blur();
+                 if (e.key === "Escape") { cancelRef.current = true; e.currentTarget.blur(); }
+               }} />
+        <div className="modal-grid">
+          {apps.map(a => (
+            <AppTile key={a.bundleIdentifier} bid={a.bundleIdentifier} name={a.displayName}
+                     size={ICON_OVERLAY} fromFolder iconVersion={iconVersion} onPress={onPress} />
+          ))}
+          {apps.length === 0 && <div className="empty">Drag apps here</div>}
+        </div>
+        <div className="row-end"><button onClick={onClose}>Close</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- App ---------- */
+
+function App() {
+  const [layout, setLayout] = useState(null);
+  const [names, setNames] = useState({});
+  const [status, setStatus] = useState("Not connected");
+  const [iconVersion, setIconVersion] = useState(0);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [openFolderId, setOpenFolderId] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [ghost, setGhost] = useState(null);       // {mode, bid, name}
+
+  const ghostRef = useRef(null);
+  const pressRef = useRef(null);
+  const hoverRef = useRef({ el: null, target: null });
+
+  const openFolder = useMemo(() => {
+    if (!layout || !openFolderId) return null;
+    for (const p of layout) {
+      if (Array.isArray(p)) for (const it of p) if (isFolder(it) && it.id === openFolderId) return it;
+    }
+    return null;
+  }, [layout, openFolderId]);
+
+  useEffect(() => {
+    if (openFolderId && layout && !openFolder) setOpenFolderId(null);
+  }, [openFolder, openFolderId, layout]);
+
+  // Keep window listeners pointed at the latest handlers
+  const api = useRef({});
+  useEffect(() => {
+    const m = e => api.current.move && api.current.move(e);
+    const u = e => api.current.up && api.current.up(e);
+    window.addEventListener("pointermove", m);
+    window.addEventListener("pointerup", u);
+    return () => {
+      window.removeEventListener("pointermove", m);
+      window.removeEventListener("pointerup", u);
+    };
+  }, []);
+
+  // Refresh icon cache version while icons are downloading
+  useEffect(() => {
+    if (!names || Object.keys(names).length === 0) return;
+    let polls = 0;
+    const t = setInterval(async () => {
+      polls++;
+      try {
+        const s = await (await fetch("/api/status")).json();
+        setIconVersion(s.icons_cached);
+        if (s.icons_cached >= s.apps || polls > 60) clearInterval(t);
+      } catch (e) {
+        clearInterval(t);
+      }
+    }, 1500);
+    return () => clearInterval(t);
+  }, [names]);
+
+  async function readLayout() {
+    setStatus("Connecting to iPhone…");
+    const r = await fetch("/api/read", { method: "POST" });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus(j.detail || "Read failed");
+      return;
+    }
+    const data = await r.json();
+    setLayout(ensureIds(data.layout));
+    setNames(data.apps);
+    setStatus(`Loaded ${Object.keys(data.apps).length} apps — icons loading…`);
+  }
+
+  async function backup() {
+    const r = await fetch("/api/backup", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    setStatus(r.ok ? `Backup saved: ${j.path}` : (j.detail || "Backup failed"));
+  }
+
+  async function applyToPhone() {
+    setConfirmOpen(false);
+    setStatus("Writing to iPhone…");
+    const r = await fetch("/api/layout", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout }),
+    });
+    const j = await r.json().catch(() => ({}));
+    setStatus(r.ok ? "Sent — check your iPhone (backup saved)" : (j.detail || "Write failed"));
+  }
+
+  function addPage() {
+    setLayout(prev => [...prev, []]);
+  }
+
+  /* ----- folder rename ----- */
+
+  function renameFolder(id, name) {
+    setLayout(prev => prev.map(p => (Array.isArray(p)
+      ? p.map(it => (isFolder(it) && it.id === id ? { ...it, displayName: name } : it))
+      : p)));
+    setStatus(`Renamed folder to "${name}"`);
+  }
+
+  /* ----- drag engine ----- */
+
+  function startPress(e, payload) {
+    if (e.button !== 0) return;
+    pressRef.current = { ...payload, sx: e.clientX, sy: e.clientY, active: false, moved: false };
+  }
+
+  function placeGhost(x, y, instant) {
+    const g = ghostRef.current;
+    if (!g) return;
+    if (instant) g.style.transition = "none";
+    g.style.transform = `translate(${x - GHOST / 2}px, ${y - GHOST / 2}px)`;
+    if (instant) {
+      void g.offsetWidth;          // force reflow so the jump isn't animated
+      g.style.transition = "";
+    }
+  }
+
+  function findTarget(x, y, bid) {
+    const el = document.elementFromPoint(x, y);
+    const holder = el && el.closest("[data-drop]");
+    if (!holder) return null;
+    const target = JSON.parse(holder.dataset.drop);
+    if (!canDrop(api.current.layout, target, bid)) return null;
+    return { el: holder, target };
+  }
+
+  function onMove(e) {
+    const p = pressRef.current;
+    if (!p) return;
+
+    if (!p.active) {
+      if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < DRAG_PX) return;
+      p.moved = true;
+      if (!p.bid) return;                   // folders and "New Page" only respond to clicks
+      p.active = true;
+      document.body.style.userSelect = "none";
+      if (p.fromFolder) setOpenFolderId(null);
+      setGhost({ mode: "show", bid: p.bid, name: p.name });
+      placeGhost(p.sx, p.sy, true);         // lift from the press point
+    }
+
+    placeGhost(e.clientX, e.clientY);
+    const hit = findTarget(e.clientX, e.clientY, p.bid);
+    const cur = hoverRef.current;
+    if (cur.el !== (hit ? hit.el : null)) {
+      if (cur.el) cur.el.classList.remove("over");
+      if (hit) hit.el.classList.add("over");
+      hoverRef.current = { el: hit ? hit.el : null, target: hit ? hit.target : null };
+    }
+  }
+
+  function commit(bid, target) {
+    setLayout(prev => moveApp(prev, bid, target, names));
+    setStatus(`Moved ${names[bid] || bid}`);
+  }
+
+  function onUp(e) {
+    const p = pressRef.current;
+    pressRef.current = null;
+    if (!p) return;
+
+    if (!p.active) {
+      if (!p.moved && p.onClick) p.onClick();
+      return;
+    }
+
+    document.body.style.userSelect = "";
+    const hov = hoverRef.current;
+    if (hov.el) hov.el.classList.remove("over");
+    hoverRef.current = { el: null, target: null };
+
+    const hit = findTarget(e.clientX, e.clientY, p.bid);
+    if (hit) {
+      const r = hit.el.getBoundingClientRect();
+      placeGhost(r.left + r.width / 2, r.top + r.height / 2);
+      setGhost(g => (g ? { ...g, mode: "drop" } : g));
+      setTimeout(() => {
+        commit(p.bid, hit.target);
+        setGhost(null);
+      }, 180);
+    } else {
+      placeGhost(p.sx, p.sy);
+      setGhost(g => (g ? { ...g, mode: "back" } : g));
+      setTimeout(() => setGhost(null), 180);
+    }
+  }
+
+  api.current = { layout, startPress, move: onMove, up: onUp };
+
+  /* ----- library list ----- */
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return Object.entries(names)
+      .map(([bid, name]) => ({ bid, name, cat: categorise(bid, name) }))
+      .filter(x => (!q || x.name.toLowerCase().includes(q) || x.bid.toLowerCase().includes(q))
+                   && (category === "All" || x.cat === category))
+      .sort((a, b) => CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat)
+                      || a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+      .map((x, i, arr) => ({
+        ...x,
+        header: category === "All" && (i === 0 || arr[i - 1].cat !== x.cat),
+      }));
+  }, [names, search, category]);
+
+  const pages = layout ? layout.slice(1).map(p => (Array.isArray(p) ? p : [])) : [];
+
+  const ghostClass = ghost
+    ? (ghost.mode === "show" ? " show" : ghost.mode === "drop" ? " drop" : " back")
+    : "";
+  const ghostInnerClass = ghost
+    ? (ghost.mode === "show" ? " lift" : ghost.mode === "drop" ? " shrink" : "")
+    : "";
+
+  return (
+    <div>
+      <div className="top">
+        <button className="primary" onClick={readLayout}>Connect & Read</button>
+        <button onClick={backup} disabled={!layout}>Backup</button>
+        <button className="danger" onClick={() => setConfirmOpen(true)} disabled={!layout}>
+          Apply to iPhone
+        </button>
+        <span className="status">{status}</span>
+      </div>
+
+      <div className="main">
+        <div className="left">
+          <div className="left-head">
+            <input placeholder="Search apps" value={search}
+                   onChange={e => setSearch(e.target.value)} />
+            <select value={category} onChange={e => setCategory(e.target.value)}>
+              <option>All</option>
+              {CAT_ORDER.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="scroll">
+            {visible.map(x => (
+              <React.Fragment key={x.bid}>
+                {x.header && <div className="cat">{x.cat}</div>}
+                <div className="row" onPointerDown={e => startPress(e, { bid: x.bid, name: x.name })}>
+                  <AppIcon bid={x.bid} name={x.name} size={ICON_LIST} iconVersion={iconVersion} />
+                  <span>{x.name}</span>
+                </div>
+              </React.Fragment>
+            ))}
+            {layout && visible.length === 0 && <div className="empty">No apps match.</div>}
+          </div>
+        </div>
+
+        <div className="right">
+          {!layout && <div className="empty" style={{ fontSize: 14 }}>
+            Click “Connect & Read” to load your Home Screen.
+          </div>}
+          {layout && (
+            <>
+              <Dock layout={layout} iconVersion={iconVersion} onPress={startPress} />
+              <div className="pages">
+                {pages.map((page, i) => (
+                  <PageCard key={i + 1} idx={i + 1} page={page} iconVersion={iconVersion}
+                            onPress={startPress} onOpenFolder={setOpenFolderId} />
+                ))}
+                <div className="card newpage"
+                     data-drop={JSON.stringify({ type: "page", idx: layout.length })}
+                     onPointerDown={e => startPress(e, { onClick: addPage })}>
+                  + New Page
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {layout && openFolder && (
+        <FolderModal folder={openFolder} iconVersion={iconVersion}
+                     onPress={startPress} onClose={() => setOpenFolderId(null)}
+                     onRename={renameFolder} />
+      )}
+
+      {confirmOpen && (
+        <div className="modal-bg">
+          <div className="modal">
+            <div className="modal-title">Overwrite Home Screen on iPhone?</div>
+            <p className="muted">A backup of the current layout is saved first.</p>
+            <div className="row-end">
+              <button onClick={() => setConfirmOpen(false)}>Cancel</button>
+              <button className="danger" onClick={applyToPhone}>Overwrite</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div ref={ghostRef} className={`ghost${ghostClass}`}>
+        <div className={`ghost-inner${ghostInnerClass}`}>
+          {ghost && <AppIcon bid={ghost.bid} name={ghost.name} size={GHOST} iconVersion={iconVersion} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
